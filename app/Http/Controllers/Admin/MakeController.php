@@ -11,7 +11,19 @@ use Illuminate\Support\Facades\Response;
 
 class MakeController extends Controller
 {
-    public function anyExe(){
+    /**
+     * 代码创建页面
+     * 返回: mixed
+     */
+    public function getCreateCode(){
+        return Response::returns([]);
+    }
+
+    /**
+     * 执行创建
+     * 返回: mixed
+     */
+    public function postExe(){
         //处理没有值的参数
         $parameters = collect(Request::except('artisan','where','order'))->filter(function($item){
             return $item;
@@ -19,6 +31,6 @@ class MakeController extends Controller
         //$parameters = ['name'=>'Admin/TestController','--resource'=>true];
         //执行命令
         $exitCode = Artisan::call(Request::input('artisan'), $parameters);
-        return Response::returns(['alert'=>alert(['content'=>'操作成功!'])]);
+        return ['alert'=>alert(['content'=>'操作成功!'])];
     }
 }

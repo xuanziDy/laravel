@@ -1,17 +1,21 @@
-define(['app',dataPath(),'admin/public/headerController','admin/public/leftController'], function (app,datas) {
-    var datas = datas || data;
-    dump(datas);
-    app.register.controller('admin-user-editCtrl', ["$scope",'$rootScope', 'Model','View','$alert','$http','$location','$timeout',
-    function ($scope,$rootScope,Model,View,$alert,$http,$location,$timeout) {
-        //重置
-        $scope = View.with({'master':datas.row,'master_roles':datas.roles},$scope);
-        $scope.new_roles = [];
-        $scope.reset = function() {
+app.controller('admin-user-editCtrl', ["$scope",'$rootScope', 'Model','View','$http','$alert',
+    function ($scope,$rootScope,Model,View,$http,$alert) {
+        dump(datas);
+        datas.row = (!datas.row || (typeof datas.row.length=='number' && !datas.row.length)) ? {} : datas.row;
+        $rootScope = View.with(datas.global, $rootScope);
+        $scope = View.with(datas, $scope);
+        $scope.errorFieldMap = {};
+        //重置备份数据
+        $scope.master = angular.copy($scope.row);
+        $scope.master_roles = angular.copy($scope.roles);
+        $scope.resetdata = function () {
             $scope.row = angular.copy($scope.master);
             $scope.roles = angular.copy($scope.master_roles);
         };
-        $scope.reset();
 
+        /* 条件查询数据 */
+        $scope.getData = Model.getData;
+        $scope.new_roles = [];
         //提交
         $scope.submit = function(){
             if($scope.row.id){
@@ -31,14 +35,15 @@ define(['app',dataPath(),'admin/public/headerController','admin/public/leftContr
             data.new_roles = $scope.new_roles;
             $http({
                 method: 'POST',
-                url: $scope.data_url,
+                url: $scope.edit_url,
                 data: data
             }).success(function(){
-                $timeout(function(){
+                $scope.error = {};
+                window.setTimeout(function(){
                     if($scope.row.id){
-                        //$location.path($scope.back_url);
+                        window.location.href = $scope.back_url;
                     }
-                },1000)
+                },1000);
             }).error(function(data){
                 if(typeof data == "object"){
                     for(var i in data){
@@ -50,8 +55,6 @@ define(['app',dataPath(),'admin/public/headerController','admin/public/leftContr
                 }
             });
         }
-        $rootScope.nav = datas.nav;
-        $rootScope.route = datas.route;
+
 
     }]);
-})

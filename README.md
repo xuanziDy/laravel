@@ -45,6 +45,23 @@ $ composer install
 1. 根目录创建 ```.env``` 文件
 2. 修改好数据库等相关配置
 3. cmd到项目根目录
+4. 将\config\app.php打开去掉164行-166行的注释
+```
+164        //MarginTree\Providers\MarginTreeServiceProvider::class, //边界树注册
+165        //Message\Providers\MessageServiceProvider::class, //消息模块
+166        //Custom\Commands\Providers\CommandsServiceProvider::class, //自定义代码生成
+```
+5. appache需要开启重写配置,Nginx配置重写规则如下
+```
+        if ($uri ~* "^/+data/(.*)") {
+          rewrite "^/+data/" /index.php/$1 break;
+        }
+        location / {
+            try_files $uri $uri/ /index.html;
+            index  index.html index.htm index.php;
+            #autoindex  on;
+        }
+```
 
 ```
 $ php artisan migrate --seed
@@ -52,4 +69,5 @@ $ php artisan migrate --seed
 * 将站点目录指向根目录下的public(/public);
 * 路由访问:/admin/index
 * Note: 登录用户名:13699411148 密码:123456
+
 

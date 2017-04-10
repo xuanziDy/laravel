@@ -10,56 +10,40 @@
 | and give it the controller to call when that URI is requested.
 |
 */
-Route::get('/', 'Home\IndexController@index');
 
-//前台路由设置
-Route::group(['prefix'=>'home','namespace'=>'Home'],function(){
+//首页
+Route::get('/', function(){
+    return redirect('/home/auth/login');
+});
+
+Route::controller('img', 'Home\ImgController'); //图片处理
+
+//前台无需登录路由
+Route::group(['prefix'=>'home','namespace'=>'Home'],function($data){
+    Route::get('swagger', 'SwaggerController@doc'); //swagger接口文档说明路由
     Route::controller('auth', 'AuthController');
-    //首页
-    //Route::get('/', 'IndexController@index');
-   /* Route::get('/home', ['uses'=>'HomeController@index','as'=>'ho']);
-    // 验证路由
-    Route::get('/login', 'AuthController@showLoginForm');
-    Route::post('login', 'AuthController@login');
-    Route::get('logout', 'AuthController@logout');
-
-    // 用户注册路由
-    Route::get('register', 'AuthController@showRegistrationForm');
-    Route::post('register', 'AuthController@register');
-
-    // 密码重置路由
-    Route::get('password/reset/{token?}', 'PasswordController@showResetForm');
-    Route::post('password/email', 'PasswordController@sendResetLinkEmail');
-    Route::post('password/reset', 'PasswordController@reset');
-    //用户页
-    Route::group(['middleware'=>['admin']],function(){
-        Route::get('/{user?}', ['as'=>'home',function ($user=null) {
-            return $user;
-            $user AND dd($user);
-            return view('welcome');
-        }]);
-    });
-    Route::controller('index', 'IndexController');*/
-
-
-
-
+    Route::controller('index', 'IndexController');
+    Route::controller('pay-communicate', 'PayCommunicateController'); //支付通讯控制器
 });
-Route::resource('photo', 'PhotoController');
-Route::group(['namespace'=>'Admin'],function(){
-    //Route::resource('menu', 'MenuController');
+
+//前端必须登录的路由
+Route::group(['prefix'=>'home','namespace'=>'Home','middleware'=>['auth']],function($data){
+    Route::controller('pay', 'PayController'); //支付接口
 });
 
 
-//后台路由设置
-Route::group(['prefix'=>'admin','namespace'=>'Admin','middleware'=>['auth','admin']],function(){
-    Route::controller('make', 'MakeController');
-    Route::controller('menu', 'MenuController');
-    Route::controller('role', 'RoleController');
-    Route::controller('area', 'AreaController');
-    Route::controller('user', 'UserController');
+//中间件验证
+Route::group(['prefix'=>'admin','namespace'=>'Admin','middleware'=>['auth','admin']], function(){
+    Route::controller('make', 'MakeController'); //创建代码控制器
+    Route::controller('menu', 'MenuController'); //菜单资源控制器
+    Route::controller('area', 'AreaController'); //区域资源控制器
+    Route::controller('exploit', 'ExploitController'); //开发工具控制器
+    Route::controller('role', 'RoleController'); //角色资源控制器
+    Route::controller('user', 'UserController'); //用户资源控制器
+    Route::controller('profile', 'ProfileController'); //个人设置
+    Route::controller('chart', 'ChartController'); //图表事列
     Route::controller('test', 'TestController');
-    Route::controller('/', 'IndexController');
+    Route::controller('index', 'IndexController');
 });
 
 

@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Home;
 
+use App\Logics\Facade\UserLogic;
 use App\User;
+use Germey\Geetest\CaptchaGeetest;
 use Gregwar\Captcha\CaptchaBuilder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Response;
+use Laravel\Socialite\Facades\Socialite;
 use Validator;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
@@ -41,8 +45,9 @@ class AuthController extends Controller
      *
      * @var string
      */
-    protected $redirectTo = '/admin/index';
+    protected $redirectTo = '/admin/index/index';
     protected $redirectAfterLogout = '/home/auth/login';
+    protected $redirectToHome = '/home/index/index';
 
     /**
      * Create a new authentication controller instance.
@@ -62,7 +67,10 @@ class AuthController extends Controller
      */
     public function showLoginForm()
     {
-        return Response::returns(['_token'=>csrf_token()]);
+        return Response::returns([
+            '_token'=>csrf_token(),
+            'geetest'=>$this->geetest()
+        ]);
     }
 
     /**
@@ -75,11 +83,60 @@ class AuthController extends Controller
         return $this->captcha($w,$h);
     }
 
+    /**
+     * 验证码生成
+     * @param int $w
+     * @param int $h
+     * @return mixed
+     */
     public function captcha($w=150,$h=32){
         $builder = new CaptchaBuilder();
         $builder->build($w,$h);
-        \Session::set('phrase',$builder->getPhrase()); //存储验证码
+        \Session::put(config('auth.verify_code_key'),$builder->getPhrase()); //存储验证码
         return response($builder->output())->header('Content-type','image/jpeg');
+    }
+
+    /**
+     * 极验验证
+     * Get geetest.
+     */
+    public function getGeetest()
+    {
+       return $this->geetest();
+    }
+
+    /**
+     * 极验验证
+     * @return mixed
+     */
+    public function geetest()
+    {
+        $user_id = "test";
+        $status = \Geetest::preProcess($user_id);
+        session()->put('gtserver', $status);
+        session()->put('user_id', $user_id);
+        $data = \Geetest::getResponse();
+        $data['client_fail_alert'] = Config::get('geetest.client_fail_alert','验证失败!');
+        $data['lang'] = Config::get('geetest.lang', 'zh-cn');
+        $data['success'] = !$data['success'];
+        return $data;
+    }
+
+    /**
+     * Validate the user login request.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return void
+     */
+    protected function validateLogin(Request $request)
+    {
+        $this->validate($request, [
+            $this->loginUsername() => 'required',
+            'password' => 'required',
+          //  'verify' => 'required|verify_code',
+            'geetest_challenge' => 'required|geetest'
+        ]);
+
     }
 
     /**
@@ -100,7 +157,7 @@ class AuthController extends Controller
         //ajax提交
         return Response::returns([
            $this->loginUsername() => [$this->getFailedLoginMessage()]
-        ],302);
+        ],422);
     }
 
     /**
@@ -109,7 +166,7 @@ class AuthController extends Controller
     public function logout()
     {
         Auth::guard($this->getGuard())->logout();
-        return orRedirect(property_exists($this, 'redirectAfterLogout') ? $this->redirectAfterLogout : '/');
+        return orRedirect((property_exists($this, 'redirectAfterLogout') ? $this->redirectAfterLogout : '/'));
     }
 
     /**
@@ -215,8 +272,51 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Send the response after the user was authenticated.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  bool  $throttles
+     * @return \Illuminate\Http\Response
+     */
+    protected function handleUserWasAuthenticated(Request $request, $throttles)
+    {
+        if ($throttles) {
+            $this->clearLoginAttempts($request);
+        }
 
+        if (method_exists($this, 'authenticated')) {
+            return $this->authenticated($request, Auth::guard($this->getGuard())->user());
+        }
+        //用户数据记录
+        UserLogic::loginCacheInfo();
+        $redirect = UserLogic::getUserInfo('admin') ? $this->redirectPath() : $this->redirectToHome;
+        if(canRedirect()){
+            return redirect()->intended($redirect);
+        }
+        return orRedirect($redirect);
+    }
 
+    /**
+     * 三方登录页面
+     * @param Request $request
+     * @param $service
+     * @return mixed
+     */
+    public function getOther($service)
+    {
+        return Socialite::driver($service)->redirect();
+    }
+
+    /**
+     * 三方登录成功回调
+     * @param $service
+     */
+    public function getOtherCallback($service)
+    {
+        $user = Socialite::driver($service)->user();
+        dd($user);
+    }
 
 
 }

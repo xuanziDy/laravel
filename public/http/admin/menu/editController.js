@@ -1,14 +1,62 @@
-define(['app',dataPath(),'admin/public/headerController','admin/public/leftController'], function (app,datas) {
-    var datas = datas || data;
-    dump(datas);
-    app.register.controller('admin-menu-editCtrl', ["$scope",'$rootScope', 'Model','View','$alert','$http','$location','$timeout',
-    function ($scope,$rootScope,Model,View,$alert,$http,$location,$timeout) {
-        //重置
-        $scope = View.with({'master':datas.row},$scope);
-        $scope.reset = function() {
+app.controller('admin-menu-editCtrl', ["$scope",'$rootScope', 'Model','View'
+        ,'$http','$modal',
+    function ($scope,$rootScope,Model,View,$http,$modal) {
+        dump(datas);
+        datas.row = (!datas.row || (typeof datas.row.length=='number' && !datas.row.length)) ? {} : datas.row;
+        $rootScope = View.with(datas.global, $rootScope);
+        $scope = View.with(datas, $scope);
+        $scope.errorFieldMap = {};
+        /* 条件查询数据 */
+        $scope.getData = Model.getData;
+
+        //重置备份数据
+        $scope.master = angular.copy($scope.row);
+        $scope.resetdata = function () {
             $scope.row = angular.copy($scope.master);
         };
-        $scope.reset();
+
+        //删除参数
+        $scope.deleteParam = function(index){
+            var data = [];
+            for (var i in $scope.row.params){
+                if(i==index){
+                    continue;
+                }
+                data[data.length] = $scope.row.params[i];
+            }
+            $scope.row.params = data;
+        }
+
+        //弹窗参数编辑
+        $scope.editParam = function(index){
+            $scope.param_index = typeof index == 'undefined' ? $scope.row.params.length : index;
+            $modal({scope: $scope,
+                template: '/http/admin/menu/edit-param.html',
+                placement:'center',
+                show: true});
+        }
+
+        //删除响应说明
+        $scope.deleteResponse = function(index){
+            var data = [];
+            for (var i in $scope.row.responses){
+                if(i==index){
+                    continue;
+                }
+                data[data.length] = $scope.row.responses[i];
+            }
+            $scope.row.responses = data;
+        }
+
+        //弹窗响应说明编辑
+        $scope.editResponse = function(index){
+            $scope.response_index = typeof index == 'undefined' ? $scope.row.responses.length : index;
+            $modal({scope: $scope,
+                template: '/http/admin/menu/edit-response.html',
+                placement:'center',
+                show: true});
+        }
+
         //提交
         $scope.submit = function(){
             var data = $scope.row;
@@ -17,14 +65,15 @@ define(['app',dataPath(),'admin/public/headerController','admin/public/leftContr
             }
             $http({
                 method: 'POST',
-                url: $scope.data_url,
+                url: $scope.edit_url,
                 data: data
             }).success(function(){
-                $timeout(function(){
+                $scope.error = {};
+                window.setTimeout(function(){
                     if($scope.row.id){
-                        $location.path($scope.back_url);
+                        window.location.href = $scope.back_url;
                     }
-                },1000)
+                },1000);
             }).error(function(data){
                 if(typeof data == "object"){
                     for(var i in data){
@@ -36,8 +85,4 @@ define(['app',dataPath(),'admin/public/headerController','admin/public/leftContr
                 }
             });
         }
-        $rootScope.nav = datas.nav;
-        $rootScope.route = datas.route;
-
     }]);
-})

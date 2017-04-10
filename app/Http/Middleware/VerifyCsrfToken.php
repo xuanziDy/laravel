@@ -12,6 +12,34 @@ class VerifyCsrfToken extends BaseVerifier
      * @var array
      */
     protected $except = [
-        //
+        '/home/pay-communicate/result',
+        '/home/pay-communicate/notify'
     ];
+
+    /**
+     * Handle an incoming request.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \Closure  $next
+     * @return mixed
+     *
+     * @throws \Illuminate\Session\TokenMismatchException
+     */
+    public function handle($request, \Closure $next)
+    {
+        if (
+            $this->isReading($request) ||
+            $this->runningUnitTests() ||
+            $this->shouldPassThrough($request) ||
+            $this->tokensMatch($request)
+        ) {
+            return $this->addCookieToResponse($request, $next($request));
+        }
+
+        if(!canRedirect()){
+            return orRedirect('/home/auth/login');
+        }
+        throw new TokenMismatchException;
+    }
+
 }

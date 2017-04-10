@@ -2,19 +2,13 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Admin;
-use App\Models\Menu;
-use App\Models\Role;
+use App\Logics\Facade\MenuLogic;
+use App\Logics\Facade\UserLogic;
 use Closure;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Session;
-use Symfony\Component\HttpFoundation\Request;
 
-class AdminMiddleware
-{
+class AdminMiddleware{
     /**
      * 脚本运行时调用
      *
@@ -27,55 +21,33 @@ class AdminMiddleware
 
     public function handle($request, Closure $next)
     {
-        //获取管理员用户
-        $admin = Auth::user()->admin;
-
-        //不是管理员
-        if(!$admin){
-            return orRedirect('/');
-        }
-
-        //获取用户所有角色,跟其下属角色
-        $roles = $admin->roles;
-        //不是超级管理员
-        if(!$roles->contains('id',1)){
-            //用户所含角色的下级角色
-            $lower_level = [];
-            $roles->each(function ($item,$k) use(&$lower_level){
-                $lower_level[] = $item->childs()->toArray(); //获取所有下级角色
-            });
-            $lower_level_ids = collect($lower_level)->collapse()->pluck('id')->toArray();
-
-            //后台用户的角色ID
-            $roles_id = $roles->pluck('id')->toArray();
-            $roles_id = array_merge($roles_id,$lower_level_ids);
-
-            //含有的权限url
-            $menus = Menu::whereHas('roles',function ($q) use ($roles_id){
-                $q->whereIn('id',$roles_id);
-            })->orderBy('left_margin')->get();
-            $hasPermission = false;
-            $route = Route::getCurrentRoute()->getCompiled()->getStaticPrefix(); //当前路由
-            $menus->each(function($item) use (&$hasPermission,$route){
-                //dump($item->url,$route,strpos($item->url,$route)===0);
-               if(strpos($item->url,$route)===0){
-                   $hasPermission = true;
-               }
-            });
-            //dd(1);
-            //判断权限
-            if(!$hasPermission){
-                dd('无权访问!');
-                return orRedirect('/admin/index');
+        //不是管理员,跳转到前台首页
+        if(!UserLogic::getUserInfo('admin')){
+            if(canRedirect() || app('request')->has('define')){
+                return orRedirect('/admin/index/page404');
             }
-        }else{
-            $menus = Menu::orderBy('left_margin')->get();
+            return Response::returns(['alert'=>alert(['content'=>'你还不是后台管理员,请联系管理员!'],404)],404);
         }
-        //dd($menus->toArray());
-        $admin->menus = $menus->toArray();
-        //存储后台用户信息
-        Session::put('admin',$admin->toArray());
 
+        //不是超级管理员,需要验证权限
+        if(!UserLogic::getUserInfo('isSuperAdmin')){
+            //当前用户拥有的菜单权限
+            $menus = UserLogic::getUserInfo('menus');
+
+            //当前路由
+            $route = Route::getCurrentRoute()->getCompiled()->getStaticPrefix();
+
+            //判断当前路由是否在拥有权限url中
+            $hasPermission = MenuLogic::isUrlInMenus($route,$menus);;
+
+            //没有权限
+            if(!$hasPermission){
+                if(canRedirect() || app('request')->has('define')){
+                    return orRedirect('/admin/index/page404');
+                }
+                return Response::returns(['alert'=>alert(['content'=>'你没有访问权限,请联系管理员!'],404)],404);
+            }
+        }
 
         $response = $next($request);
         //后置操作

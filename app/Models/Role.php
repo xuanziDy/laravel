@@ -5,10 +5,8 @@
 namespace App\Models;
 
 use App\BaseModel;
-use App\Exceptions\MarginTree\ExcludeTop;
-use App\Exceptions\MarginTree\TreeModel;
+use MarginTree\TreeModel;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Session;
 
 class Role extends BaseModel
 {
@@ -16,7 +14,7 @@ class Role extends BaseModel
     use SoftDeletes; //软删除
 
     //批量赋值白名单
-    protected $fillable = ['id','name','description','parent_id'];
+    protected $fillable = ['id','name','description','x','y','parent_id'];
     //输出隐藏字段
     protected $hidden = ['deleted_at'];
     //日期字段
@@ -29,7 +27,7 @@ class Role extends BaseModel
 
     /* 角色-用户 */
     public function admins(){
-        return $this->belongsToMany('App\Models\Admin','admin_role','admin_id','role_id');
+        return $this->belongsToMany('App\Models\Admin','admin_role','role_id','admin_id');
     }
 
 

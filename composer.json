@@ -1,5 +1,5 @@
 {
-    "name": "laravel/laravel",
+    "name": "zsping1989/laravel",
     "description": "The Laravel Framework.",
     "keywords": ["framework", "laravel"],
     "license": "MIT",
@@ -10,7 +10,26 @@
         "overtrue/laravel-lang": "~3.0",
         "caouecs/laravel-lang": "~3.0",
         "guzzlehttp/guzzle": "~5.0",
-        "gregwar/captcha": "dev-master"
+        "gregwar/captcha": ">=1.0.0",
+        "zsping1989/margin-tree": "^1.0",
+        "zsping1989/commands": "^1.0",
+        "barryvdh/laravel-ide-helper": "^2.2",
+        "zircote/swagger-php": "^2.0",
+        "doctrine/dbal": "^2.5",
+        "zsping1989/message": "^1.0",
+        "flc/alidayu": "^2.0",
+        "predis/predis": "^1.1",
+        "germey/geetest": "^1.0",
+        "ignited/laravel-omnipay": "2.*",
+        "socialiteproviders/qq": "^2.0",
+        "socialiteproviders/weibo": "^2.0",
+        "socialiteproviders/weixin": "^3.0",
+        "lokielse/omnipay-wechatpay": "^1.0",
+        "lokielse/omnipay-unionpay": "dev-master",
+        "lokielse/omnipay-alipay": "^2.0",
+        "aferrandini/phpqrcode": "^1.0",
+        "jaeger/querylist": "^3.1",
+        "barryvdh/laravel-debugbar": "^2.3"
     },
     "require-dev": {
         "fzaninotto/faker": "~1.4",
@@ -50,7 +69,9 @@
         ],
         "post-update-cmd": [
             "Illuminate\\Foundation\\ComposerScripts::postUpdate",
-            "php artisan optimize"
+            "php artisan optimize",
+            "php artisan clear-compiled",
+            "php artisan ide-helper:generate"
         ]
     },
     "config": {

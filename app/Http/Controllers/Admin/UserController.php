@@ -2,15 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Exceptions\ResourceController;
+use Custom\Commands\Controllers\ResourceController;
 use App\Http\Controllers\Controller;
+use App\Logics\Facade\UserLogic;
 use App\Models\Admin;
 use App\Models\Role;
 use App\User;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Response;
-use Illuminate\Support\Facades\Session;
 use Illuminate\Http\Request as ValidateRequest;
 
 class UserController extends Controller
@@ -18,20 +17,27 @@ class UserController extends Controller
     use ResourceController; //资源控制器
 
     /**
-    * 模型绑定
-    * MenuController constructor.
-    * 参数: Menu $bindModel
-    */
+     * 模型绑定
+     * MenuController constructor.
+     * 参数: Menu $bindModel
+     */
     public function __construct(User $bindModel){
         $this->bindModel = $bindModel;
     }
 
     /**
-    * 新增或修改,验证规则获取
-    * 返回: array
-    */
+     * 新增或修改,验证规则获取
+     * 返回: array
+     */
     protected function getValidateRule(){
-        return ['uname'=>'sometimes|required|alpha_dash|between:6,18|unique:users,uname','password'=>'sometimes|required|digits_between:6,18','name'=>'required','email'=>'sometimes|required|email|unique:users,email','mobile_phone'=>'sometimes|required|mobile_phone|digits:11|unique:users,qq','qq'=>'integer'];
+        return [
+            'uname' => 'sometimes|required|alpha_dash|between:6,18|unique:users,uname',
+            'password' => 'sometimes|required|between:6,18',
+            'name' => 'required',
+            'email' => 'sometimes|required|email|unique:users,email',
+            'mobile_phone' => 'sometimes|required|mobile_phone|digits:11|unique:users,mobile_phone',
+            'qq' => 'integer'
+        ];
     }
 
     /**
@@ -39,20 +45,13 @@ class UserController extends Controller
      * @return static
      */
     public function getList(){
-        //树状结构限制排序
-        if(isset($this->treeOrder)){
-            $obj = $this->bindModel->orderBy('left_margin');
-        }else{
-            $obj = $this->bindModel;
-        }
-        $data = $obj->options(Request::only('where', 'order'))->paginate();
-        //判断用户是否可被删除
-        $data->load('admin'); //是后台用户不可直接被删除
-        $param = [
-            'order'=> Request::input('order',[]), //排序
-            'where'=>Request::input('where',[]), //条件查询
-        ];
-        return collect($data)->merge($param);
+        $this->handleRequest();
+        $obj = $this->checkOrder(); //排序检查
+        $page = $obj->options(Request::only('where', 'order'))->paginate();
+        $list = $page->count() ? $page->load(['admin']) : [];  //判断用户是否可被删除
+        $data= $page->toArray();
+        $data['data'] = $list;
+        return $this->withParam($data); //附带请求参数返回
     }
 
     /**
@@ -68,32 +67,17 @@ class UserController extends Controller
                 $admin->isAdmin = intval(!!$admin->id);
                 $admin->roles;
             }
-            $no_disabled = false;
-            //判断该用户是否可被当前随便修改
-            $main_roles = $this->rolesChildsId(true,false); //当前用户角色,数组
-            //如果被编辑用户的角色在用户的
-            foreach($main_roles as $main_role){
-                $flog = true; //拥有编辑权限标记
-                if(!isset($admin->roles)){
-                    $no_disabled = true;
-                    break;
-                }
-                foreach($admin->roles as $role){
-                    if(!($role->left_margin>$main_role['left_margin'] && $role->right_margin<$main_role['right_margin'])){
-                        $flog = false;
-                    }
-                }
-                $flog AND $no_disabled = true;
-            }
-            $data['row']->disabled = !$no_disabled;
+            //该条用户数据是否可编辑
+            $data['row']->disabled = !UserLogic::checkEditUser($data['row']);
         }
         $has_roles = isset($admin->roles) ? $admin->roles: collect([]);
         //获取当前用户所有下属角色
-        $self_roles = $this->rolesChildsId($this->bindModel->isSuper());
-        //列出所有角色
+        $self_roles = $this->rolesChildsId(UserLogic::getUserInfo('isSuperAdmin'));
+        //列出所有角色,当前用户不可操作的角色禁用
         $data['roles'] = Role::orderBy('left_margin')->get()->each(function($item)use($self_roles,$has_roles){
             $item->checked = in_array($item->id,$has_roles->pluck('id')->toArray()); //当前用户拥有角色
             $item->disabled = !in_array($item->id,$self_roles); //添加用户角色是否可用
+            $item->chkDisabled =  $item->disabled;
         });
         return Response::returns($data);
     }
@@ -103,17 +87,8 @@ class UserController extends Controller
      * @return array
      */
     protected function rolesChildsId($all=false,$id=true){
-        $roles = Session::get('admin')['roles']; //当前用户角色
-        $rolesChilds = collect([]);
-        collect($roles)->each(function($item)use (&$rolesChilds){
-            $rolesChilds->push(Role::find($item['id'])->childs());
-        });
-        $rolesChilds = $rolesChilds->collapse();
-        $id AND $rolesChilds = $rolesChilds->pluck('id');
-        if(!$all){
-            return $rolesChilds->toArray();
-        }
-        return $id ? $rolesChilds->merge(collect($roles)->pluck('id'))->toArray() : $rolesChilds->merge(collect($roles)->toArray())->toArray();
+        $res = UserLogic::getAdminRolesAndChilds($all);
+        return $id ? $res->pluck('id')->toArray() : $res->toArray() ;
     }
 
     /**
@@ -121,21 +96,29 @@ class UserController extends Controller
      * 参数 Request $request
      */
     public function postEdit(ValidateRequest $request){
+        $id = $request->get('id');
+        //新建用户必须验证用户名密码
+        if(!$id){
+            $request->offsetSet('uname',$request->input('uname'));
+            $request->offsetSet('password',$request->input('password'));
+        }
+
         //验证数据
         $this->validate($request,$this->getValidateRule());
-        $id = $request->get('id');
+
         $has_roles = $this->rolesChildsId();
         //修改
         if($id){
-            $user = $this->bindModel->find($id);
+            $user = $this->bindModel->findOrFail($id);
             $res =$user->update($request->all());
             if($res===false){
                 return Response::returns(['alert'=>alert(['content'=>'修改失败!'],500)]);
             }
-            if($request->input('admin.isAdmin')&& !$user->admin){ //设置成后台管理员
+            if($request->input('admin.isAdmin')){ //设置成后台管理员
                 $old_admin = Admin::withTrashed()->where('user_id','=',$id)->first();
-                if($old_admin->toArray()){
-                    $admin = $old_admin->restore(); //恢复数据
+                if(collect($old_admin)->toArray()){
+                    $old_admin->restore(); //恢复数据
+                    $admin = $old_admin;
                 }else{
                     $admin = $user->admin()->save(new Admin([]));
                 }
@@ -143,14 +126,15 @@ class UserController extends Controller
                 $new_roles = collect($request->input('new_roles'))->filter(function($item) use($has_roles){
                     return $item >0 && in_array($item,$has_roles);
                 })->toArray();
-                $new_roles AND $admin->roles()->detach($new_roles);
-                $admin->roles()->attach($new_roles);
+                $admin->roles()->detach($has_roles); //删除旧关联
+                $admin->roles()->attach($new_roles); //添加新关联
             }elseif($user->admin){ //删除后台管理员
                 $user->admin->delete();
             }
             return Response::returns(['alert'=>alert(['content'=>'修改成功!'])]);
         }
-
+        //密码加密
+        $request->offsetSet('password',bcrypt($request->input('password')));
         //新增
         $user = $this->bindModel->create($request->except('id'));
         if($request->input('admin.isAdmin')){ //设置成后台管理员
@@ -173,10 +157,10 @@ class UserController extends Controller
      */
     public function postDestroy(){
         //管理员不可直接被删除,过滤掉管理员用户
-        $ids = $this->bindModel->whereIn('id',Request::input('ids',[]))
+        $ids = $this->bindModel->whereIn('id',collect(Request::input('ids',[]))->all())
             ->get()->load('admin')->filter(function($item){
                 return !$item->admin;
-        })->pluck('id');
+            })->pluck('id');
         $res = $this->bindModel->destroy($ids);
         if($res===false){
             return Response::returns(['alert'=>alert(['content'=>'删除失败!'],500)]);
@@ -189,12 +173,65 @@ class UserController extends Controller
      * 返回: mixed
      */
     public function getFramework(){
-        //查询所有角色
-        $data = Role::orderBy('left_margin')->get()->load('admins.user');
-        //查询层级最多的节点数
-        $level_max_num = Role::select(DB::raw('count(*) as role_count'))->groupBy('level')->orderBy('role_count','desc')->first()->role_count;
-        $data->width = ($level_max_num+1)*200;
-        $data->height = Role::max('level')*115+150;
+        $roleModel = Role::orderBy('left_margin')->whereRaw('false');
+        collect(UserLogic::getUserInfo('admin.roles'))->each(function($item) use(&$roleModel){
+            $roleModel->orWhere(function($query) use($item){
+                $query->where('left_margin','<=',$item['left_margin'])
+                    ->where('right_margin','>=',$item['right_margin']);
+            })->orWhere(function($query) use($item){
+                $query->where('left_margin','>=',$item['left_margin'])
+                    ->where('right_margin','<=',$item['right_margin']);
+            });
+        });
+        //查询跟自己有关系的角色
+        $data['roles'] = $roleModel->get()->load('admins.user');
+        $level = [];
+        foreach($data['roles'] as &$role){
+            $role->users = collect($role->admins->toArray())->pluck('user')->implode('name', ',');
+            $role->x = ($role->left_margin+$role->right_margin)/2*100;
+            $role->y = 115*$role->level;
+            if(!isset($level[$role->level])){
+                $level[$role->level] = $role->x;
+            }
+            //每个层级的最远坐标位置
+            if($level[$role->level]<$role->x){
+                $level[$role->level] = $role->x;
+            }
+        }
+        $min_level = [];
+        $data['roles']->map(function($item)use($level,&$min_level){
+            if(isset($level[$item['level']+1]) && $level[$item['level']]>$level[$item['level']+1]){
+                !$min_level and $min_level = [$item['level'],$level[$item['level']]-$level[$item['level']+1]];
+                $item->x =  $item->x-($level[$item['level']]-$level[$item['level']+1]);
+            }
+            return $item;
+        })->map(function($item)use($min_level){
+            if($min_level && $item['level']<$min_level[0]){
+                $item->x = $item->x - $min_level[1];
+            }
+            return $item;
+        });
+        $data['offset'] = $data['roles']->min('x');
+        $data['width'] = $data['roles']->max('x')+200-$data['offset'];
+        $data['height'] = ($data['roles']->max('level')-$data['roles']->min('level'))*115;
+
+        //dd($min_level);
+        //dd($level);
+
+        //return $data;
         return Response::returns($data);
+    }
+
+    /**
+     * 保存每个节点的坐标位置
+     */
+    public function postFramework(){
+        foreach(Request::input('positions') as $value){
+            $res = Role::find($value['id'])->update($value);
+            if($res===false){
+                return Response::returns(['alert'=>alert(['content'=>'保存失败!'],500)]);
+            }
+        }
+        return Response::returns(['alert'=>alert(['content'=>'保存成功!'])]);
     }
 }

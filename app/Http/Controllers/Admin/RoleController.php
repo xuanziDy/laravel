@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Exceptions\ResourceController;
+use Custom\Commands\Controllers\ResourceController;
 use App\Http\Controllers\Controller;
+use App\Logics\Facade\MenuLogic;
+use App\Logics\Facade\UserLogic;
 use App\Models\Role;
 use App\User;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Response;
-use Illuminate\Support\Facades\Session;
 use Illuminate\Http\Request as ValidateRequest;
 
 class RoleController extends Controller
@@ -16,52 +17,22 @@ class RoleController extends Controller
     use ResourceController; //资源控制器
     protected $treeOrder = true;
     /**
-    * 模型绑定
-    * MenuController constructor.
-    * 参数: Menu $bindModel
-    */
+     * 模型绑定
+     * MenuController constructor.
+     * 参数: Menu $bindModel
+     */
     public function __construct(Role $bindModel){
         $this->bindModel = $bindModel;
     }
 
     /**
-    * 新增或修改,验证规则获取
-    * 返回: array
-    */
+     * 新增或修改,验证规则获取
+     * 返回: array
+     */
     protected function getValidateRule(){
         return ['name'=>'required','parent_id'=>'sometimes|required|exists:roles,id'];
     }
 
-
-    /**
-     * 获取菜单数据
-     * @return static
-     */
-    public function getList(){
-        //树状结构限制排序
-        if(isset($this->treeOrder)){
-            $obj = $this->bindModel->orderBy('left_margin');
-        }else{
-            $obj = $this->bindModel;
-        }
-        $data = $obj->options(Request::only('where', 'order'))->paginate();
-        $roles = Session::get('admin')['roles']; //当前用户角色
-        foreach($data as &$item){
-            $flog = false;
-            foreach($roles as $role){
-                if($role['left_margin']<$item['left_margin']&& $role['right_margin']>$item['right_margin']){
-                    $flog = true;
-                }
-            }
-            $item['handle'] = $flog;
-        }
-        $param = [
-            'order'=> Request::input('order',[]), //排序
-            'where'=>Request::input('where',[]), //条件查询
-        ];
-
-        return collect($data)->merge($param);
-    }
 
     /**
      * 列表数据展示页面
@@ -79,17 +50,10 @@ class RoleController extends Controller
      * 返回: mixed
      */
     public function getUserList($id){
-        $admin = $this->bindModel->find($id)->admins;
+        $admin = $this->bindModel->findOrFail($id)->admins;
         return User::whereIn('id',$admin->pluck('user_id'))->get();
     }
 
-    /**
-     * 判断是否是超级管理员
-     * @return bool
-     */
-    protected function isSuper(){
-        return collect(Session::get('admin')['roles'])->pluck('id')->contains(1);
-    }
 
     /**
      * 编辑数据页面
@@ -97,21 +61,27 @@ class RoleController extends Controller
      */
     public function getEdit($id=null){
         $data = [];
-        $id AND $data['row'] = $this->bindModel->find($id);
-        //当前角色拥有权限
-        $have = $id ? $data['row']->menus->pluck('id')->all() : [];
+        if(!$id){
+            $data['canEdit']  = true;
+            //查询当前用户拥有权限
+            $data['permissions'] = MenuLogic::getMainCheckedMenus([]);
+            return Response::returns($data);
+        }
 
-        //查询当前用户拥有权限
-        $data['permissions'] = collect(Session::get('admin')['menus'])->map(function($item) use ($have){
-            if(in_array($item['id'],$have)){
-                $item['checked'] = 1;
-            }else{
-                $item['checked'] = 0;
-            }
+        $data['row'] = $this->bindModel->findOrFail($id);
+        //当前角色对应的用户
+        $data['users'] = $this->getUserList($id);
+        //当前用户是否可编辑当前角色
+        $data['canEdit'] = in_array($id,$this->rolesChildsId()) || UserLogic::getUserInfo('isSuperAdmin');
+
+        //查询当前用户拥有权限,并选中当前角色权限
+        $data['permissions'] = MenuLogic::getMainCheckedMenus($data['row']->menus)->map(function($item)use($data){
+            $item['checked'] = $data['row']['id']==1 ? true:$data['row']['menus']->contains('id',$item['id']);
+            $item['chkDisabled'] = ($data['row']['id']==1 || !$data['canEdit']);
+            $item['url'] = '';
             return $item;
         });
-        $data['users'] = $id ? $this->getUserList($id) : [];
-        $data['canEdit'] = $id ? (in_array($id,$this->rolesChildsId()) || $this->isSuper()) : true;
+
         return Response::returns($data);
     }
 
@@ -123,13 +93,14 @@ class RoleController extends Controller
         //验证数据
         $this->validate($request,$this->getValidateRule());
         $id = $request->get('id');
+
         //验证是否有修改权限
-        if(!$this->isSuper() && !in_array($id,$this->rolesChildsId())){ //无权修改
+        if($id && !UserLogic::getUserInfo('isSuperAdmin') && !in_array($id,$this->rolesChildsId())){ //无权修改
             return Response::returns(['name'=>['你无权修改该角色!']],422);
         };
 
         //添加或修改角色父ID权限判断
-        if(!$this->isSuper()){
+        if(!UserLogic::getUserInfo('isSuperAdmin')){
             $parent_id = $request->get('parent_id');
             if(!$parent_id || !in_array($parent_id,$this->rolesChildsId(true))){
                 return Response::returns(['parent_id'=>['只能设置你有权限的角色分组ID']],422);
@@ -137,7 +108,7 @@ class RoleController extends Controller
         }
 
         //当前用户拥有的权限
-        $have = collect(Session::get('admin')['menus'])->pluck('id')->all();
+        $have = collect(UserLogic::getUserInfo('menus'))->pluck('id')->all();
         //新角色权限
         $new_permissions = collect($request->get('new_permissions'))->filter(function ($item) {
             return $item > 0;
@@ -169,8 +140,9 @@ class RoleController extends Controller
                 $role->childs()->each(function($item) use($del_permissions){
                     $del_permissions AND $item->menus()->detach($del_permissions);
                 });
-
             }
+            //更新用户信息
+            UserLogic::loginCacheInfo();
             return Response::returns(['alert' => alert(['content' => '修改成功!'])]);
         }
 
@@ -183,7 +155,9 @@ class RoleController extends Controller
             $new_permissions AND $item->menus()->detach($new_permissions);
             $item->menus()->attach($new_permissions);
         });
-        
+
+        //更新用户信息
+        UserLogic::loginCacheInfo();
         //添加菜单-角色关系
         return Response::returns(['alert' => alert(['content' => '新增成功!'])]);
     }
@@ -193,16 +167,7 @@ class RoleController extends Controller
      * @return array
      */
     protected function rolesChildsId($all=false){
-        $roles = Session::get('admin')['roles']; //当前用户角色
-        $rolesChilds = collect([]);
-        collect($roles)->each(function($item)use (&$rolesChilds){
-            $rolesChilds->push($this->bindModel->find($item['id'])->childs());
-        });
-        $rolesChilds = $rolesChilds->collapse()->pluck('id');
-        if(!$all){
-            return $rolesChilds->toArray();
-        }
-        return $rolesChilds->merge(collect($roles)->pluck('id'))->toArray();
+        return UserLogic::getAdminRolesAndChilds($all)->pluck('id')->toArray();
     }
 
     /**

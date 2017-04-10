@@ -52,7 +52,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => 'Asia/Shanghai',
 
     /*
     |--------------------------------------------------------------------------
@@ -153,12 +153,24 @@ return [
         /*
          * Application Service Providers...
          */
+        Barryvdh\LaravelIdeHelper\IdeHelperServiceProvider::class, //编辑器自动补全
+
         App\Providers\AppServiceProvider::class,
         App\Providers\AuthServiceProvider::class,
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
-        App\Providers\ResponseMacroServiceProvider::class,
-        App\Providers\MarginTreeServiceProvider::class,
+        Barryvdh\Debugbar\ServiceProvider::class, //调试日志
+        App\Providers\ObserverServiceProvider::class, //观察者模式
+
+        SocialiteProviders\Manager\ServiceProvider::class, //三方登录
+        App\Providers\ResponseMacroServiceProvider::class, //响应宏注册
+        MarginTree\Providers\MarginTreeServiceProvider::class, //边界树注册
+        Message\Providers\MessageServiceProvider::class, //消息模块
+        Custom\Commands\Providers\CommandsServiceProvider::class, //自定义代码生成
+        Germey\Geetest\GeetestServiceProvider::class, //极验模块
+        App\Providers\LogicServiceProvider::class, //逻辑模块
+        Ignited\LaravelOmnipay\LaravelOmnipayServiceProvider::class, //支付宝支付
+
 
     ],
 
@@ -205,6 +217,10 @@ return [
         'URL' => Illuminate\Support\Facades\URL::class,
         'Validator' => Illuminate\Support\Facades\Validator::class,
         'View' => Illuminate\Support\Facades\View::class,
+        'Geetest' => Germey\Geetest\Geetest::class,
+        'Socialite' => Laravel\Socialite\Facades\Socialite::class,
+        'Omnipay' => Ignited\LaravelOmnipay\Facades\OmnipayFacade::class,
+        'Debugbar' => Barryvdh\Debugbar\Facade::class,
 
     ],
 

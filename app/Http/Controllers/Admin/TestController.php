@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Exceptions\ResourceController;
+
 use App\Http\Controllers\Controller;
+use Custom\Commands\Controllers\ResourceController;
 use App\Models\Test;
 
 class TestController extends Controller

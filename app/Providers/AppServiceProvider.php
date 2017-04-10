@@ -2,10 +2,10 @@
 
 namespace App\Providers;
 
-use App\Exceptions\BaseBlueprint;
 use App\Exceptions\CustomValidator;
+use App\Logics\UserLogic;
+use App\Models\Menu;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Request;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -22,16 +22,8 @@ class AppServiceProvider extends ServiceProvider
             return new CustomValidator($translator, $data, $rules, $messages);
         });
 
-        //处理请求参数
-        Request::offsetSet('order',json_decode(Request::input('order','[]')));
-        Request::offsetSet('where',collect(Request::input('where',[]))->map(function($item){
-            if($item){
-                return json_decode($item);
-            }
-        })->toArray());
-
-
-
+        //时间语言设置
+        \Carbon\Carbon::setLocale('zh');
     }
 
     /**
@@ -41,5 +33,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
+        //用户逻辑
+        $this->app->singleton('user.logic', function($app){
+            return new UserLogic();
+        });
+
     }
 }
